@@ -25,6 +25,24 @@ bool _isNotNull(dynamic value) => _isFalse(_isNull(value));
 bool _isNotBlank(String? value) =>
     _isNotNull(value) && value!.trim().isNotEmpty;
 
+class ParsedResult {
+  final MirrorParameterPair? command;
+  final List<String>? commandArguments;
+  final bool success;
+
+  const ParsedResult({this.command, this.commandArguments}) : success = true;
+
+  const ParsedResult.success()
+      : success = true,
+        command = null,
+        commandArguments = null;
+
+  const ParsedResult.failure()
+      : success = false,
+        command = null,
+        commandArguments = null;
+}
+
 // Local type is needed for strict type checking in lists.
 // var abc = [] turns out to be a List<dynamic> which is not
 // as safe as List<String> abc = [] for example.
@@ -56,6 +74,10 @@ class SmartArg {
   /// The map is unmodifiable, and its content is retrieved from the operating
   /// system [Platform.environment] on unless provided otherwise.
   late Map<String, String> _environment = Platform.environment;
+
+  /// The Parent [SmartArg], or [SmartArgCommand] instance for the current
+  /// subcommand.
+  SmartArg? parent;
 
   /// Recursively walks the [classMirror] and it's associated
   /// [ClassMirror.superclass] (and subsequently declared [mixin]s) to find all
@@ -132,7 +154,10 @@ class SmartArg {
     _resetParser();
 
     try {
-      if (_parse(arguments)) {
+      final ParsedResult result = _parse(arguments);
+      if (_isNotNull(result.command)) {
+        _launchCommand(result.command!, result.commandArguments ?? []);
+      } else if (result.success) {
         _validate();
       }
     } on ArgumentError catch (e) {
@@ -330,7 +355,7 @@ class SmartArg {
     return result;
   }
 
-  bool _parse(List<String> arguments) {
+  ParsedResult _parse(List<String> arguments) {
     final instanceMirror = reflectable.reflect(this);
     final List<String> expandedArguments = _rewriteArguments(arguments);
 
@@ -343,22 +368,22 @@ class SmartArg {
 
       if (argument.toLowerCase() == _app!.argumentTerminator?.toLowerCase()) {
         _extras!.addAll(expandedArguments.skip(argumentIndex));
-        return true;
+        return ParsedResult.success();
       } else if (_isFalse(argument.startsWith('-'))) {
         if (_commands.containsKey(argument)) {
           final command = _commands[argument]!;
           final commandArguments = arguments.skip(argumentIndex).toList();
-
-          _launchCommand(command, commandArguments);
-
-          return true;
+          return ParsedResult(
+            command: command,
+            commandArguments: commandArguments,
+          );
         } else {
           // Was not an argument, must be an extra
           _extras!.add(argument);
 
           if (_isFalse(_app!.allowTrailingArguments)) {
             _extras!.addAll(expandedArguments.skip(argumentIndex));
-            return true;
+            return ParsedResult.success();
           }
 
           continue;
@@ -394,11 +419,11 @@ class SmartArg {
 
       if (argumentConfiguration.argument is HelpArgument) {
         _extras!.addAll(expandedArguments.skip(argumentIndex));
-        return false;
+        return ParsedResult.failure();
       }
     }
 
-    return true;
+    return ParsedResult.success();
   }
 
   //Attempts to set the value of the argument
@@ -512,11 +537,16 @@ class SmartArg {
     final a = commandMpp.mirror;
     final b = a.type as ClassMirror;
     final command = b.newInstance('', []) as SmartArgCommand;
+    command.parent = this;
+    final subcommands = command._commands;
 
     beforeCommandParse(command, arguments);
     command.parse(arguments);
-    beforeCommandExecute(command);
-    command.execute(this);
+    if (arguments.isNotEmpty &&
+        _isFalse(subcommands.containsKey(arguments.first))) {
+      beforeCommandExecute(command);
+      command.execute(this);
+    }
     afterCommandExecute(command);
   }
 
@@ -534,7 +564,11 @@ class SmartArg {
   void beforeCommandParse(SmartArgCommand command, List<String> arguments) {}
 
   /// Invoked before a command is executed
-  void beforeCommandExecute(SmartArgCommand command) {}
+  void beforeCommandExecute(SmartArgCommand command) {
+    if (this is SmartArgCommand) {
+      parent?.beforeCommandExecute(this as SmartArgCommand);
+    }
+  }
 
   /// Invoked after a command is executed
   void afterCommandExecute(SmartArgCommand command) {}

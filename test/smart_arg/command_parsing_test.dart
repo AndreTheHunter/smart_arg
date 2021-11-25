@@ -57,8 +57,109 @@ class TestSimpleCommand extends SmartArg {
 
   @override
   void afterCommandExecute(SmartArgCommand command) {
-    super.beforeCommandExecute(command);
+    super.afterCommandExecute(command);
     hookOrder.add("afterCommandExecute");
+  }
+}
+
+List<String> subcommandHookOrder = [];
+
+@SmartArg.reflectable
+@Parser(exitOnFailure: false, description: 'The Child Command')
+class ChildCommand extends SmartArgCommand {
+  @StringArgument()
+  String? aValue;
+
+  @Command()
+  late ChildCommand child;
+
+  @override
+  void execute(SmartArg parentArguments) {
+    whatExecuted = 'ChildCommand: $aValue';
+    subcommandHookOrder.add("ChildExecute");
+  }
+
+  @override
+  void beforeCommandParse(SmartArgCommand command, List<String> arguments) {
+    super.beforeCommandParse(command, arguments);
+    subcommandHookOrder.add("beforeChildParse");
+  }
+
+  @override
+  void beforeCommandExecute(SmartArgCommand command) {
+    super.beforeCommandExecute(command);
+    subcommandHookOrder.add("beforeChildExecute");
+  }
+
+  @override
+  void afterCommandExecute(SmartArgCommand command) {
+    super.afterCommandExecute(command);
+    subcommandHookOrder.add("afterChildExecute");
+  }
+}
+
+@SmartArg.reflectable
+@Parser(exitOnFailure: false, description: 'The Father Command')
+class FatherCommand extends SmartArgCommand {
+  @StringArgument()
+  String? aValue;
+
+  @Command()
+  late ChildCommand child;
+
+  @override
+  void execute(SmartArg parentArguments) {
+    whatExecuted = 'FatherCommand: $aValue';
+    subcommandHookOrder.add("FatherExecute");
+  }
+
+  @override
+  void beforeCommandParse(SmartArgCommand command, List<String> arguments) {
+    super.beforeCommandParse(command, arguments);
+    subcommandHookOrder.add("beforeFatherParse");
+  }
+
+  @override
+  void beforeCommandExecute(SmartArgCommand command) {
+    super.beforeCommandExecute(command);
+    subcommandHookOrder.add("beforeFatherExecute");
+  }
+
+  @override
+  void afterCommandExecute(SmartArgCommand command) {
+    super.afterCommandExecute(command);
+    subcommandHookOrder.add("afterFatherExecute");
+  }
+}
+
+@SmartArg.reflectable
+@Parser(exitOnFailure: false, description: 'The Parent Command')
+class GrandFatherCommand extends SmartArg {
+  @Command()
+  late ChildCommand child;
+
+  @Command()
+  late FatherCommand father;
+
+  @StringArgument()
+  String? aValue;
+
+  @override
+  void beforeCommandParse(SmartArgCommand command, List<String> arguments) {
+    super.beforeCommandParse(command, arguments);
+    subcommandHookOrder.add("beforeGrandFatherParse");
+  }
+
+  @override
+  void beforeCommandExecute(SmartArgCommand command) {
+    super.beforeCommandExecute(command);
+    subcommandHookOrder.add("beforeGrandFatherExecute");
+  }
+
+  @override
+  void afterCommandExecute(SmartArgCommand command) {
+    super.afterCommandExecute(command);
+    subcommandHookOrder.add("afterGrandFatherExecute");
   }
 }
 
@@ -111,6 +212,56 @@ void main() {
         expect(help.contains('  put'), true);
         expect(help.contains('Get a file'), true);
         expect(help.contains('Put a file'), true);
+      });
+    });
+
+    group('subcommands', () {
+      setUp(() {
+        whatExecuted = null;
+        subcommandHookOrder = [];
+      });
+
+      test('First Subcommand', () {
+        GrandFatherCommand().parse(['father', '--a-value=beta']);
+        expect(whatExecuted, 'FatherCommand: beta');
+        expect(subcommandHookOrder, [
+          'beforeGrandFatherParse',
+          'beforeGrandFatherExecute',
+          'FatherExecute',
+          'afterGrandFatherExecute'
+        ]);
+      });
+
+      test('Second subcommand', () {
+        GrandFatherCommand().parse(['father', 'child', '--a-value=charlie']);
+        expect(whatExecuted, 'ChildCommand: charlie');
+        expect(subcommandHookOrder, [
+          'beforeGrandFatherParse',
+          'beforeFatherParse',
+          'beforeGrandFatherExecute',
+          'beforeFatherExecute',
+          'ChildExecute',
+          'afterFatherExecute',
+          'afterGrandFatherExecute'
+        ]);
+      });
+
+      test('Triply Nested subcommand', () {
+        GrandFatherCommand()
+            .parse(['father', 'child', 'child', '--a-value=delta']);
+        expect(whatExecuted, 'ChildCommand: delta');
+        expect(subcommandHookOrder, [
+          'beforeGrandFatherParse',
+          'beforeFatherParse',
+          'beforeChildParse',
+          'beforeGrandFatherExecute',
+          'beforeFatherExecute',
+          'beforeChildExecute',
+          'ChildExecute',
+          'afterChildExecute',
+          'afterFatherExecute',
+          'afterGrandFatherExecute'
+        ]);
       });
     });
   });

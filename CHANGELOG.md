@@ -2,6 +2,7 @@
 
 - Added:
     - Support for SmartArg Argument inheritance defined in super classes or via mixins
+    - Support for SubCommands
 
 ## 2.0.0
 
