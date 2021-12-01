@@ -2,7 +2,8 @@
 
 - Added:
     - Support for SmartArg Argument inheritance defined in super classes or via mixins
-    - Support for SubCommands
+    - Support for SubCommands, including before/after command callback invocation
+    - Nullable `parent` property to `SmartArg` and `SmartArgCommand` instances
 
 ## 2.0.0
 
