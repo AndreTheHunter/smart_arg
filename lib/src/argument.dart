@@ -30,13 +30,20 @@ abstract class Argument {
   /// [Parser.description] field instead.
   final String? help;
 
-  /// Is this option required?
+  /// Is this argument required?
   ///
   /// If this is set to `true` and it is not supplied, the user will be told
   /// there is an error, will be shown the help screen and if
   /// [SmartArgApp.exitOnFailure] is set to `true`, the application will exit
   /// with the error code 1.
   final bool? isRequired;
+
+  /// Is this argument an option?
+  ///
+  /// Options are not considered positional so they can appear in any order
+  /// within the argument lists. This is especially useful when defining global
+  /// arguments.
+  final bool? isOption;
 
   /// Environment Variable, if any, that can be used for this property.
   final String? environmentVariable;
@@ -46,6 +53,7 @@ abstract class Argument {
     this.long,
     this.help,
     this.isRequired = false,
+    this.isOption = false,
     this.environmentVariable,
   });
 

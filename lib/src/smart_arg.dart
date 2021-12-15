@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:collection/collection.dart' show IterableExtension;
 import 'package:reflectable/reflectable.dart';
-import 'package:smart_arg/src/predicates.dart';
 
 import 'argument.dart';
 import 'command.dart';
@@ -10,9 +9,11 @@ import 'group.dart';
 import 'help_argument.dart';
 import 'mirror_argument_pair.dart';
 import 'parser.dart';
+import 'predicates.dart';
 import 'reflector.dart';
 import 'smart_arg_command.dart';
 import 'string_utils.dart';
+import 'usage.dart' as u;
 
 class ParsedResult {
   final MirrorParameterPair? command;
@@ -32,12 +33,16 @@ class ParsedResult {
         commandArguments = null;
 }
 
-String? _argumentHelp(final MirrorParameterPair mpp) {
-  return mpp.argument.help ??
-      (mpp.mirror.type.metadata
-                  .firstWhereOrNull((element) => element.runtimeType == Parser)
-              as Parser?)
-          ?.description;
+bool _wasSetInParent(final SmartArg command, final String argument) {
+  bool wasSet = false;
+  if (isNotNull(command.parent)) {
+    final SmartArg parent = command.parent!;
+    wasSet = parent._wasSet.contains(argument);
+    if (isFalse(wasSet)) {
+      return _wasSetInParent(parent, argument);
+    }
+  }
+  return wasSet;
 }
 
 // Local type is needed for strict type checking in lists.
@@ -171,138 +176,52 @@ class SmartArg {
 
   /// Return a string telling the user how to use your application from the command line.
   String usage() {
-    List<String?> lines = [];
-
-    if (isNotNull(_app?.description)) {
-      lines.add(_app!.description);
-      lines.add('');
-    }
-
-    List<String> helpKeys = [];
-    List<Group?> helpGroups = [];
-    List<List<String>> helpDescriptions = [];
-
-    final arguments =
-        _mirrorParameterPairs.where((v) => isFalse(v.argument is Command));
-    final commands = _mirrorParameterPairs.where((v) => v.argument is Command);
-
-    if (arguments.isNotEmpty) {
-      for (var mpp in arguments) {
-        List<String?> keys = [];
-
-        keys.addAll(mpp.keys(_app).map((v) => v!.startsWith('-') ? v : '--$v'));
-        helpKeys.add(keys.join(', '));
-        helpGroups.add(mpp.group);
-
-        List<String> helpLines = [mpp.argument.help ?? 'no help available'];
-
-        if (mpp.argument.isRequired ?? false) {
-          helpLines.add('[REQUIRED]');
-        }
-
-        String? envVar = mpp.argument.environmentVariable;
-        if (isNotBlank(envVar)) {
-          helpLines.add('[Environment Variable: \$$envVar]');
-        }
-
-        helpLines.addAll(mpp.argument.additionalHelpLines);
-        helpDescriptions.add(helpLines);
-      }
-    }
-
+    List<String?> usageLines = [];
     const lineIndent = 2;
     const lineWidth = 80 - lineIndent;
     final linePrefix = ' ' * lineIndent;
     const optionColumnWidth = 25;
     const helpLineWidth = lineWidth - optionColumnWidth;
 
-    {
-      void trailingHelp(Group? group) {
-        if (isNotNull(group?.afterHelp)) {
-          lines.add('');
-          lines.add(
-            indent(
-              hardWrap(group!.afterHelp!, lineWidth - lineIndent),
-              lineIndent,
-            ),
-          );
-        }
-      }
+    final arguments = _mirrorParameterPairs.where(
+      (mpp) =>
+          isFalse(mpp.argument is Command) && mpp.argument.isOption != true,
+    );
 
-      Group? currentGroup;
-
-      for (var i = 0; i < helpKeys.length; i++) {
-        final thisGroup = helpGroups[i];
-
-        if (thisGroup != currentGroup) {
-          trailingHelp(currentGroup);
-
-          if (isNotNull(currentGroup)) {
-            lines.add('');
-          }
-
-          lines.add(thisGroup!.name);
-
-          if (isNotNull(thisGroup.beforeHelp)) {
-            lines.add(
-              indent(
-                hardWrap(thisGroup.beforeHelp!, lineWidth - lineIndent),
-                lineIndent,
-              ),
-            );
-            lines.add('');
-          }
-        }
-
-        var keyDisplay = linePrefix + helpKeys[i];
-
-        var thisHelpDescriptions = helpDescriptions[i].join('\n');
-        thisHelpDescriptions = hardWrap(thisHelpDescriptions, helpLineWidth);
-        thisHelpDescriptions = indent(thisHelpDescriptions, optionColumnWidth);
-
-        if (keyDisplay.length <= optionColumnWidth - 1) {
-          thisHelpDescriptions = thisHelpDescriptions.replaceRange(
-            0,
-            keyDisplay.length,
-            keyDisplay,
-          );
-        } else {
-          lines.add(keyDisplay);
-        }
-
-        lines.add(thisHelpDescriptions);
-
-        currentGroup = helpGroups[i] ?? currentGroup;
-      }
-
-      trailingHelp(currentGroup);
+    if (isNotNull(_app?.description)) {
+      usageLines.add(_app!.description);
+      usageLines.add('');
     }
 
-    if (commands.isNotEmpty) {
-      lines.add('');
-      lines.add('COMMANDS');
-      List<MirrorParameterPair>.from(commands)
-          .sortedBy((mpp) => mpp.displayKey!)
-          .forEach((mpp) {
-        final String? help = _argumentHelp(mpp);
-        final commandDisplay = '$linePrefix${mpp.displayKey!}';
-        var commandHelp = hardWrap(
-          help ?? '',
-          helpLineWidth,
-        );
-        commandHelp = indent(commandHelp, optionColumnWidth);
-        if (commandDisplay.length <= optionColumnWidth - 1) {
-          commandHelp = commandHelp.replaceRange(
-            0,
-            commandDisplay.length,
-            commandDisplay,
-          );
-        } else {
-          lines.add(commandDisplay);
-        }
-        lines.add(commandHelp);
-      });
-    }
+    usageLines
+      ..addAll(
+        u.arguments(
+          _app,
+          arguments,
+          helpLineWidth: helpLineWidth,
+          optionColumnWidth: optionColumnWidth,
+          linePrefix: linePrefix,
+          lineIndent: lineIndent,
+          lineWidth: lineWidth,
+        ),
+      )
+      ..addAll(
+        u.commands(
+          _mirrorParameterPairs.where((v) => v.argument is Command),
+          helpLineWidth: helpLineWidth,
+          optionColumnWidth: optionColumnWidth,
+          linePrefix: linePrefix,
+        ),
+      )
+      ..addAll(
+        u.options(
+          _app,
+          _mirrorParameterPairs.where((mpp) => mpp.argument.isOption == true),
+          helpLineWidth: helpLineWidth,
+          optionColumnWidth: optionColumnWidth,
+          linePrefix: linePrefix,
+        ),
+      );
 
     if (isNotNull(_app?.extendedHelp)) {
       for (final eh in _app!.extendedHelp!) {
@@ -310,20 +229,20 @@ class SmartArg {
           throw StateError('Help.help must be set');
         }
 
-        lines.add('');
+        usageLines.add('');
 
         if (isNotNull(eh.header)) {
-          lines.add(hardWrap(eh.header!, lineWidth));
-          lines.add(
+          usageLines.add(hardWrap(eh.header!, lineWidth));
+          usageLines.add(
             indent(hardWrap(eh.help!, lineWidth - lineIndent), lineIndent),
           );
         } else {
-          lines.add(hardWrap(eh.help!, lineWidth));
+          usageLines.add(hardWrap(eh.help!, lineWidth));
         }
       }
     }
 
-    return lines.join('\n');
+    return u.removeConsecutiveBlanks(usageLines).join('\n');
   }
 
   //
@@ -365,6 +284,7 @@ class SmartArg {
   ParsedResult _parse(List<String> arguments) {
     final instanceMirror = reflectable.reflect(this);
     final List<String> expandedArguments = _rewriteArguments(arguments);
+    ParsedResult? commandResult;
 
     int argumentIndex = 0;
     while (argumentIndex < expandedArguments.length) {
@@ -373,26 +293,33 @@ class SmartArg {
 
       argumentIndex++;
 
-      if (argument.toLowerCase() == _app!.argumentTerminator?.toLowerCase()) {
-        _extras!.addAll(expandedArguments.skip(argumentIndex));
-        return ParsedResult.success();
-      } else if (isFalse(argument.startsWith('-'))) {
-        if (_commands.containsKey(argument)) {
-          final command = _commands[argument]!;
-          final commandArguments = arguments.skip(argumentIndex).toList();
-          return ParsedResult(
-            command: command,
-            commandArguments: commandArguments,
-          );
-        } else {
-          // Was not an argument, must be an extra
-          _extras!.add(argument);
-
-          if (isFalse(_app!.allowTrailingArguments)) {
-            _extras!.addAll(expandedArguments.skip(argumentIndex));
-            return ParsedResult.success();
+      if (isNull(commandResult)) {
+        if (argument.toLowerCase() == _app!.argumentTerminator?.toLowerCase()) {
+          _extras!.addAll(expandedArguments.skip(argumentIndex));
+          return ParsedResult.success();
+        } else if (isFalse(argument.startsWith('-'))) {
+          if (_commands.containsKey(argument)) {
+            //The argument is actually a command
+            final command = _commands[argument]!;
+            final commandArguments = arguments.skip(argumentIndex).toList();
+            commandResult = ParsedResult(
+              command: command,
+              commandArguments: commandArguments,
+            );
+            continue;
+          } else {
+            // Was not an argument, must be an extra
+            _extras!.add(argument);
+            if (isFalse(_app!.allowTrailingArguments)) {
+              _extras!.addAll(expandedArguments.skip(argumentIndex));
+              return ParsedResult.success();
+            }
+            continue;
           }
-
+        }
+      } else {
+        if (_commands.containsKey(argument)) {
+          //Skip if the argument is another subcommand
           continue;
         }
       }
@@ -408,30 +335,36 @@ class SmartArg {
 
       // Find our argument configuration
       var argumentConfiguration = _values[argumentName];
-      if (isNull(argumentConfiguration)) {
+      if (isNull(commandResult) &&
+          isNull(argumentConfiguration) &&
+          isFalse(_wasSetInParent(this, argumentName))) {
         throw ArgumentError('$originalArgument is invalid');
-      }
+      } else if (isNotNull(argumentConfiguration)) {
+        if (argumentConfiguration!.argument.needsValue &&
+            isFalse(hasValueViaEqual)) {
+          if (argumentIndex >= expandedArguments.length) {
+            throw ArgumentError(
+              '${argumentConfiguration.displayKey} expects a value but none was supplied.',
+            );
+          }
 
-      if (argumentConfiguration!.argument.needsValue && !hasValueViaEqual) {
-        if (argumentIndex >= expandedArguments.length) {
-          throw ArgumentError(
-            '${argumentConfiguration.displayKey} expects a value but none was supplied.',
-          );
+          value = expandedArguments[argumentIndex];
+          argumentIndex++;
         }
 
-        value = expandedArguments[argumentIndex];
-        argumentIndex++;
-      }
+        if (isNull(commandResult) ||
+            isTrue(argumentConfiguration.argument.isOption)) {
+          _trySetValue(instanceMirror, argumentName, value);
+        }
 
-      _trySetValue(instanceMirror, argumentName, value);
-
-      if (argumentConfiguration.argument is HelpArgument) {
-        _extras!.addAll(expandedArguments.skip(argumentIndex));
-        return ParsedResult.failure();
+        if (isNull(commandResult) &&
+            argumentConfiguration.argument is HelpArgument) {
+          _extras!.addAll(expandedArguments.skip(argumentIndex));
+          return ParsedResult.failure();
+        }
       }
     }
-
-    return ParsedResult.success();
+    return commandResult ?? ParsedResult.success();
   }
 
   //Attempts to set the value of the argument

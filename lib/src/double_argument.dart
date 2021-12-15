@@ -12,6 +12,7 @@ class DoubleArgument extends Argument {
     dynamic long,
     String? help,
     bool? isRequired,
+    bool? isOption,
     this.minimum,
     this.maximum,
     String? environmentVariable,
@@ -20,6 +21,7 @@ class DoubleArgument extends Argument {
           long: long,
           help: help,
           isRequired: isRequired,
+          isOption: isOption,
           environmentVariable: environmentVariable,
         );
 

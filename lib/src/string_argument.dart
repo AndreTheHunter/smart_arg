@@ -9,6 +9,7 @@ class StringArgument extends Argument {
     dynamic long,
     String? help,
     bool? isRequired,
+    bool? isOption,
     this.mustBeOneOf,
     String? environmentVariable,
   }) : super(
@@ -16,6 +17,7 @@ class StringArgument extends Argument {
           long: long,
           help: help,
           isRequired: isRequired,
+          isOption: isOption,
           environmentVariable: environmentVariable,
         );
 

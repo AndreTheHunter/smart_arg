@@ -7,7 +7,7 @@ import 'advanced_command_example.reflectable.dart';
 /// A basic mixin for adding a the help argument to each [SmartArg] extension
 @SmartArg.reflectable
 mixin HelpArg {
-  @HelpArgument()
+  @HelpArgument(isOption: true)
   bool? help;
 
   void printUsageAndExitIfHelpRequested() {
@@ -54,7 +54,7 @@ class DockerRunCommand extends SmartArgCommand with HelpArg, DockerImageArg {
   description: 'Example of using mixins to reduce argument declarations',
 )
 class Args extends SmartArg with HelpArg {
-  @BooleanArgument(short: 'v', help: 'Verbose mode')
+  @BooleanArgument(short: 'v', help: 'Verbose mode', isOption: true)
   bool? verbose;
 
   @Command()
