@@ -1,8 +1,10 @@
 import 'package:reflectable/mirrors.dart';
 
 import 'argument.dart';
+import 'command.dart';
 import 'group.dart';
 import 'parser.dart';
+import 'predicates.dart';
 
 // Convert `areYouAlive` to `are-you-alive`
 String camelToDash(String value) {
@@ -71,4 +73,40 @@ class MirrorParameterPair {
 
     return result;
   }
+}
+
+/// True if the provided [Object] is a [Group]
+bool isGroup(final Object object) {
+  return object is Group;
+}
+
+/// True if the provided [Object] is an [Argument]
+bool isArgument(final Object object) {
+  return object is Argument;
+}
+
+/// True if the provided [MirrorParameterPair] is an option type [Argument]
+bool isOption(final MirrorParameterPair mpp) {
+  return isTrue(mpp.argument.isOption);
+}
+
+/// True if the provided [MirrorParameterPair] is NOT an option type [Argument]
+bool isNotOption(final MirrorParameterPair mpp) {
+  return isFalse(isOption(mpp));
+}
+
+/// True if the provided [MirrorParameterPair] or [Argument] is of type [Command]
+bool isCommand(final dynamic mpp) {
+  if (mpp is MirrorParameterPair) {
+    return mpp.argument is Command;
+  } else if (mpp is Argument) {
+    return mpp is Command;
+  } else {
+    return false;
+  }
+}
+
+/// True if the provided [MirrorParameterPair] is NOT of type [Command]
+bool isNotCommand(final MirrorParameterPair mpp) {
+  return isFalse(isCommand(mpp));
 }

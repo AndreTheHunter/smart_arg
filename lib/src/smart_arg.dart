@@ -4,7 +4,6 @@ import 'package:collection/collection.dart' show IterableExtension;
 import 'package:reflectable/reflectable.dart';
 
 import 'argument.dart';
-import 'command.dart';
 import 'group.dart';
 import 'help_argument.dart';
 import 'mirror_argument_pair.dart';
@@ -33,6 +32,7 @@ class ParsedResult {
         commandArguments = null;
 }
 
+/// True if the supplied argument was set any parent definitions
 bool _wasSetInParent(final SmartArg command, final String argument) {
   bool wasSet = false;
   if (isNotNull(command.parent)) {
@@ -68,7 +68,7 @@ class SmartArg {
 
   /// List of extras supplied on the command line.
   ///
-  /// Extras are anything supplied on the command line that was not an option.
+  /// Extras are anything supplied on the command line that was not an argument.
   List<String>? get extras => _extras;
 
   /// The environment for [SmartArg] as a map from string key to string value.
@@ -120,15 +120,14 @@ class SmartArg {
       Group? currentGroup;
       for (final mirror in _walkDeclarations(instanceMirror.type)) {
         currentGroup =
-            mirror.metadata.firstWhereOrNull((m) => m is Group) as Group? ??
-                currentGroup;
+            mirror.metadata.firstWhereOrNull(isGroup) as Group? ?? currentGroup;
 
-        final parameter =
-            mirror.metadata.firstWhereOrNull((m) => m is Argument);
-        if (parameter != null) {
+        final Argument? parameter =
+            mirror.metadata.firstWhereOrNull(isArgument) as Argument?;
+        if (isNotNull(parameter)) {
           final mpp = MirrorParameterPair(
             mirror as VariableMirror,
-            parameter as Argument,
+            parameter!,
             currentGroup,
           );
           for (final key in mpp.keys(_app)) {
@@ -138,7 +137,7 @@ class SmartArg {
             _values[key] = mpp;
           }
           _mirrorParameterPairs.add(mpp);
-          if (parameter is Command) {
+          if (isCommand(parameter)) {
             _commands[mpp.displayKey] = mpp;
           }
         }
@@ -183,11 +182,6 @@ class SmartArg {
     const optionColumnWidth = 25;
     const helpLineWidth = lineWidth - optionColumnWidth;
 
-    final arguments = _mirrorParameterPairs.where(
-      (mpp) =>
-          isFalse(mpp.argument is Command) && mpp.argument.isOption != true,
-    );
-
     if (isNotNull(_app?.description)) {
       usageLines.add(_app!.description);
       usageLines.add('');
@@ -197,7 +191,9 @@ class SmartArg {
       ..addAll(
         u.arguments(
           _app,
-          arguments,
+          _mirrorParameterPairs
+              .where(isNotCommand) //
+              .where(isNotOption),
           helpLineWidth: helpLineWidth,
           optionColumnWidth: optionColumnWidth,
           linePrefix: linePrefix,
@@ -207,7 +203,7 @@ class SmartArg {
       )
       ..addAll(
         u.commands(
-          _mirrorParameterPairs.where((v) => v.argument is Command),
+          _mirrorParameterPairs.where(isCommand),
           helpLineWidth: helpLineWidth,
           optionColumnWidth: optionColumnWidth,
           linePrefix: linePrefix,
@@ -216,7 +212,7 @@ class SmartArg {
       ..addAll(
         u.options(
           _app,
-          _mirrorParameterPairs.where((mpp) => mpp.argument.isOption == true),
+          _mirrorParameterPairs.where(isOption),
           helpLineWidth: helpLineWidth,
           optionColumnWidth: optionColumnWidth,
           linePrefix: linePrefix,
